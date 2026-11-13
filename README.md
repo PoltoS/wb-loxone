@@ -1,132 +1,138 @@
-# wb-loxone — устройства Wiren Board в Loxone
+# wb-loxone — Wiren Board devices in Loxone
 
-[English version](README.en.md)
+A bridge that runs directly on a [Wiren Board](https://wirenboard.com) controller
+and exposes its devices to a [Loxone](https://www.loxone.com) Miniserver:
+relays, inputs, sensors, meters, Zigbee via zigbee2mqtt, Z-Wave Long Range via
+Z-Way, wb-rules virtual devices — anything the controller publishes to MQTT.
 
-Мост, который работает прямо на контроллере [Wiren Board](https://wirenboard.com)
-и пробрасывает его устройства в [Loxone](https://www.loxone.com) Miniserver:
-реле, входы, датчики, счётчики, Zigbee через zigbee2mqtt, виртуальные устройства
-wb-rules — всё, что контроллер публикует в MQTT.
-
-Каналы выбираются в веб-интерфейсе. Для Loxone Config мост собирает готовые
-шаблоны виртуальных входов и выходов, по одному на устройство. Нажатия кнопок
-(одинарное, двойное, тройное, долгое) мост распознаёт сам и отдаёт в Loxone
-отдельными импульсами.
+Channels are selected in the web UI. For Loxone Config the bridge generates
+ready-made virtual input and output templates, one per device. Button presses
+(single, double, triple, long) are detected by the bridge and delivered to
+Loxone as separate pulses.
 
 ```
- устройства WB ──► MQTT ──► wb-loxone ──UDP──► Виртуальный вход UDP   ┐
- (RS-485, Zigbee,           (на WB)                                    │ Loxone
-  1-Wire, wb-rules)  ◄────────────────◄──HTTP── Виртуальный выход      ┘ Miniserver
+ WB devices ──► MQTT ──► wb-loxone ──UDP──► Virtual UDP input   ┐
+ (RS-485, Zigbee,        (on WB)                                 │ Loxone
+  Z-Wave LR, 1-Wire,                                             │ Miniserver
+  wb-rules)    ◄────────────────◄──HTTP── Virtual output         ┘
 ```
 
-![Веб-интерфейс моста: настройки и выбор каналов](docs/img/web-ui.png)
+![Bridge web UI: settings and channel selection](docs/img/web-ui.png)
 
-* **Состояния — сразу при изменении.** Мост отправляет UDP-пакет в Loxone, как
-  только значение поменялось в MQTT. Loxone ничего не опрашивает.
-* **Команды — за миллисекунды.** Виртуальный выход Loxone вызывает HTTP на
-  контроллере, мост публикует значение в MQTT. Мост тратит на команду единицы миллисекунд.
-* **Шаблоны на каждое устройство.** `VIU_<имя>.xml` и `VO_<имя>.xml`: блок в
-  Loxone Config назван именем устройства, строки — «канал — устройство».
-* **Кнопки.** Число нажатий берётся из аппаратного счётчика модуля, поэтому
-  короткие нажатия не теряются даже на медленной шине. Подробно —
+* **States are pushed on change.** The bridge sends a UDP packet to Loxone as
+  soon as a value changes in MQTT. Loxone polls nothing.
+* **Commands take milliseconds.** A Loxone virtual output calls HTTP on the
+  controller and the bridge publishes the value to MQTT. The bridge itself adds
+  only a few milliseconds.
+* **A template per device.** `VIU_<name>.xml` and `VO_<name>.xml`: the block in
+  Loxone Config is named after the device, rows are "channel — device".
+* **Buttons.** The press count is read from the module's hardware counter, so
+  short presses are not lost even on a slow bus. Details in
   [docs/buttons.md](docs/buttons.md).
-* **Ничего не ставится на контроллер.** Один файл на стандартном Python 3.9,
-  который уже есть в прошивке. Без pip, без Node-RED, без отдельного сервера.
+* **Nothing to install on the controller.** A single file in the standard
+  Python 3.9 that ships with the firmware. No pip, no Node-RED, no extra server.
 
-## Чем это отличается от Modbus TCP (wb-mqtt-mbgate)
+## How it differs from Modbus TCP (wb-mqtt-mbgate)
 
-Связать WB и Loxone можно и через Modbus-шлюз контроллера, и многие так и делают.
-Мост не заменяет его, а закрывает то, что через Modbus неудобно:
+You can connect WB and Loxone through the controller's Modbus gateway, and many
+people do. The bridge does not replace it; it covers what is awkward over Modbus:
 
-| | Modbus TCP шлюз | wb-loxone |
+| | Modbus TCP gateway | wb-loxone |
 |---|---|---|
-| Состояния в Loxone | Loxone опрашивает по циклу | приходят сразу при изменении |
-| Кнопки | только состояние входа, двойное/долгое — логикой в Loxone по опросу | готовые импульсы «одинарное / двойное / тройное / долгое» |
-| Шаблоны | адреса регистров руками | собираются автоматически, по устройству |
-| Zigbee, wb-rules, 1-Wire | нужно настраивать карту регистров | всё, что есть в MQTT |
-| Названия | номера регистров | названия каналов и устройств из WB |
+| States in Loxone | Loxone polls in a cycle | delivered immediately on change |
+| Buttons | input state only; double/long press built in Loxone logic from polling | ready-made "single / double / triple / long" pulses |
+| Templates | register addresses by hand | generated automatically, per device |
+| Zigbee, Z-Wave LR, wb-rules, 1-Wire | a register map must be configured | everything that is in MQTT |
+| Names | register numbers | channel and device names from WB |
 
-Их можно использовать вместе: например, выходы через Modbus, а входы и кнопки
-через мост.
+They can be used together: for example, outputs via Modbus, inputs and buttons
+via the bridge.
 
-## Установка
+## Install
 
-На контроллере Wiren Board, под root:
+On the Wiren Board controller, as root:
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/megavoltt/wb-loxone/main/install.sh | sh
 ```
 
-В конце установщик покажет адрес веб-интерфейса — по умолчанию
-`http://<IP контроллера>:8099`.
+At the end the installer prints the web UI address — by default
+`http://<controller IP>:8099`.
 
-Повторный запуск той же команды обновляет мост. Настройки и выбор каналов
-сохраняются.
+Running the same command again updates the bridge. Settings and channel
+selection are kept.
 
-Требования: Wiren Board 7 или 8 с актуальной прошивкой (проверено на wb-2602,
-Debian 11, Python 3.9), Loxone Miniserver Gen1 или Gen2, Loxone Config 16 и новее.
+Requirements: Wiren Board 7 or 8 with current firmware (tested on wb-2602,
+Debian 11, Python 3.9), Loxone Miniserver Gen1 or Gen2, Loxone Config 16 or newer.
 
-## Первые пять минут
+## The first five minutes
 
-1. Откройте `http://<IP контроллера>:8099`, укажите **IP Miniserver** и нажмите «Сохранить».
-2. Разверните устройство и отметьте нужные каналы. Выбор сохраняется сразу.
-   Переключатели и кнопки можно проверить прямо со страницы (⇆, ▶).
-3. При необходимости задайте устройству **имя в Loxone** — так будут называться
-   блок и файлы шаблонов.
-4. Скачайте шаблоны: кнопки **VIU / VO** у устройства или **«Шаблоны всех
-   устройств (ZIP)»** сверху.
-5. В Loxone Config: «Виртуальные входы» → «Импорт шаблона» → `VIU_…xml`, затем
-   так же «Виртуальные выходы» → `VO_…xml`. Перетащите нужные входы и выходы на
-   страницу программы и сохраните в Miniserver.
+1. Open `http://<controller IP>:8099`, enter the **Miniserver IP** and click "Save".
+2. Expand a device and tick the channels you need. The selection is saved
+   immediately. Switches and buttons can be tested right from the page (⇆, ▶).
+3. If needed, set a **name in Loxone** for the device — it names the block and
+   the template files.
+4. Download the templates: the **VIU / VO** buttons on a device, or
+   **"All device templates (ZIP)"** at the top.
+5. In Loxone Config: "Virtual Inputs" → "Import template" → `VIU_…xml`, then the
+   same for "Virtual Outputs" → `VO_…xml`. Drag the inputs and outputs you need
+   onto the program page and save to the Miniserver.
 
-После импорта блоки выглядят так — один блок на устройство, строки «канал — устройство»:
+After import the blocks look like this — one block per device, rows are "channel — device":
 
-![Виртуальные выходы реле WB-MR6C в Loxone Config](docs/img/loxone-vo-relays.png)
-![Кнопка WB-MRM2-mini: состояние входа и события нажатий](docs/img/loxone-buttons.png)
+![WB-MR6C relay virtual outputs in Loxone Config](docs/img/loxone-vo-relays.png)
+![WB-MRM2-mini button: input state and press events](docs/img/loxone-buttons.png)
 
-Подробнее, с примерами подключения к блокам, — в [docs/loxone.md](docs/loxone.md).
+More, with examples of wiring to function blocks, in [docs/loxone.md](docs/loxone.md).
 
-## Документация
+## Documentation
 
-* [docs/buttons.md](docs/buttons.md) — кнопки: как распознаются нажатия, настройки, задержки, отладка
-* [docs/loxone.md](docs/loxone.md) — импорт шаблонов и подключение к блокам Loxone
-* [docs/wirenboard.md](docs/wirenboard.md) — режимы входов модулей, события Modbus, шина RS-485
-* [docs/protocol.md](docs/protocol.md) — форматы UDP и HTTP, файл настроек, API веб-интерфейса
-* [CHANGELOG.md](CHANGELOG.md) — что менялось в версиях
+The documentation in `docs/` is in Russian.
 
-## Где что лежит на контроллере
+* [docs/buttons.md](docs/buttons.md) — buttons: how presses are detected, settings, delays, debugging
+* [docs/loxone.md](docs/loxone.md) — importing templates and wiring to Loxone blocks
+* [docs/wirenboard.md](docs/wirenboard.md) — module input modes, Modbus events, the RS-485 bus
+* [docs/protocol.md](docs/protocol.md) — UDP and HTTP formats, the settings file, the web UI API
+* [CHANGELOG.md](CHANGELOG.md) — what changed in each version
 
-| Путь | Что это |
+## Where things live on the controller
+
+| Path | What it is |
 |---|---|
-| `/mnt/data/wb-loxone/` | код и веб-интерфейс |
-| `/mnt/data/etc/wb-loxone.json` | настройки и выбранные каналы |
-| `/etc/systemd/system/wb-loxone.service` | служба |
+| `/mnt/data/wb-loxone/` | code and web UI |
+| `/mnt/data/etc/wb-loxone.json` | settings and selected channels |
+| `/etc/systemd/system/wb-loxone.service` | service |
 
-`/mnt/data` переживает обновление прошивки. После полной перепрошивки (FIT)
-запустите установку ещё раз — настройки подхватятся.
+`/mnt/data` survives firmware updates. After a full reflash (FIT) run the
+installer again — the settings will be picked up.
 
 ```bash
-systemctl status wb-loxone          # состояние службы
-journalctl -u wb-loxone -f          # журнал в реальном времени
+systemctl status wb-loxone          # service status
+journalctl -u wb-loxone -f          # live log
 ```
 
-Удаление:
+Uninstall:
 
 ```bash
 systemctl disable --now wb-loxone && rm -rf /etc/systemd/system/wb-loxone.service /mnt/data/wb-loxone /mnt/data/etc/wb-loxone.json
 ```
 
-## Безопасность
+## Security
 
-Мост рассчитан на локальную сеть.
+The bridge is intended for a local network.
 
-* Веб-интерфейс по умолчанию без пароля — задайте его в настройках, если в сети
-  есть чужие устройства.
-* Команды от Loxone защищены ключом в адресе (`/set/<ключ>/…`). Мост выполняет
-  команды только для каналов, выбранных в интерфейсе, и только для каналов с
-  разрешённой записью. Новый ключ можно сгенерировать кнопкой; после этого
-  шаблоны VO надо импортировать заново.
-* Не открывайте порт моста в интернет.
+* The web UI has no password by default — set one in the settings if there are
+  untrusted devices on the network.
+* Commands from Loxone are protected by a key in the URL (`/set/<key>/…`). The
+  bridge executes commands only for channels selected in the UI and only for
+  writable channels. A new key can be generated with a button; after that the VO
+  templates must be imported again.
+* Do not expose the bridge port to the internet.
 
-## Лицензия
+## License
 
-[MIT](LICENSE) — можно свободно использовать, в том числе в коммерческих проектах.
+[MIT](LICENSE) — free to use, including in commercial projects.
+
+---
+
+**Languages:** English · [Русский](README.ru.md)
